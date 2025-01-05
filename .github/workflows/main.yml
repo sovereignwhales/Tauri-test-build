@@ -23,21 +23,18 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
-
-      - name: Install pnpm
-        run: npm install -g pnpm
+          node-version: '22'
 
       - name: Install Dependencies
-        run: pnpm install
+        run: npm install
 
       - name: Install Tauri CLI
-        run: pnpm add -g @tauri-apps/cli
+        run: npm install -g @tauri-apps/cli
 
       - name: Build Application
         env:
           TAURI_PLATFORM: ${{ matrix.platform }}
-        run: pnpm tauri build
+        run: npm run tauri build
 
       - name: Upload Build Artifacts
         if: success()
@@ -65,3 +62,4 @@ jobs:
           asset_path: src-tauri/target/release/bundle/*
           asset_name: Tauri-${{ matrix.platform }}.zip
           asset_content_type: application/zip
+
