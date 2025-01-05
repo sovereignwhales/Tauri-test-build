@@ -1,64 +1,61 @@
-name: Tauri Build
+name: 'Create Releases'
 
 on: workflow_dispatch
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-
+  publish-tauri:
+    permissions:
+      contents: write
     strategy:
+      fail-fast: false
       matrix:
-        platform: [windows-latest, macos-latest, ubuntu-latest]
+        include:
+          - platform: 'macos-latest' # for Arm based macs (M1 and above).
+            args: '--target aarch64-apple-darwin'
+          - platform: 'macos-latest' # for Intel based macs.
+            args: '--target x86_64-apple-darwin'
+          - platform: 'ubuntu-22.04' #
+            args: ''
+          - platform: 'windows-latest'
+            args: ''
 
+    runs-on: ${{ matrix.platform }}
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Setup Rust
-        uses: actions-rs/toolchain@v1
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
         with:
-          toolchain: stable
-          override: true
-
+          version: 8
+          run_install: false
+          
       - name: Install Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: 20
+          cache: 'pnpm'
 
-      - name: Install Dependencies
-        run: npm install
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli
+      - name: install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04' # This must match the platform value defined above.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.0-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          
+      - name: install frontend dependencies
+        run: pnpm install 
 
-      - name: Build Application
+      - uses: tauri-apps/tauri-action@v0
         env:
-          TAURI_PLATFORM: ${{ matrix.platform }}
-        run: npm run tauri build
-
-      - name: Upload Build Artifacts
-        if: success()
-        uses: actions/upload-artifact@v3
+          GITHUB_TOKEN: ${{ secrets.RELEASES_GITHUB_TOKEN }}
         with:
-          name: Tauri-${{ matrix.platform }}
-          path: src-tauri/target/release/bundle/*
-
-      - name: Create Release
-        if: github.event_name == 'push' && contains(github.ref, 'refs/heads/main')
-        uses: actions/create-release@v1
-        with:
-          tag_name: v${{ github.run_number }}
-          release_name: Release v${{ github.run_number }}
-          draft: false
+          tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version.
+          releaseName: 'App v__VERSION__'
+          releaseBody: 'See the assets to download this version and install.'
+          releaseDraft: true
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Release Assets
-        if: github.event_name == 'push' && contains(github.ref, 'refs/heads/main')
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: src-tauri/target/release/bundle/*
-          asset_name: Tauri-${{ matrix.platform }}.zip
-          asset_content_type: application/zip
+          args: ${{ matrix.args }}
